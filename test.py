@@ -13,6 +13,7 @@ from Personas.TwoForwardOneBack import TwoForOneBackUser
 from ProblemSpaces.LodeRunner.LodeRunnerProblemSpace import LodRunnerProblemSpace
 from ProblemSpaces.LogicPuzzles.LogicPuzzleSpace import LogicPuzzleSpace 
 from ProblemSpaces.TravelingThief.TTP_ProblemSpace import TTPProblemSpace
+from Algorithms.YouAlgorithm import YouAlgorithm
 
 """"
 Run a single experiment and save the results 
@@ -46,11 +47,11 @@ user = ExploratoryUser(problem_space)
 #user = StrictUser(problem_space)
 
 
-algorithm = Shuffling(problem_space, number_generations=number_generation, population_size=population_size, max_memory=max_memory, cross_over_rate=cross_over, mutation_rate=mutation,user=user, update_interval=50)
-
+# algorithm = Shuffling(problem_space, number_generations=number_generation, population_size=population_size, max_memory=max_memory, cross_over_rate=cross_over, mutation_rate=mutation,user=user, update_interval=50)
 #algorithm = Filtering(problem_space, number_generations=number_generation, population_size=population_size, max_memory=max_memory, cross_over_rate=cross_over, mutation_rate=mutation,user=user, update_interval=50)
 #algorithm = RandomRestarts(problem_space, number_generations=number_generation, population_size=population_size, max_memory=max_memory, cross_over_rate=cross_over, mutation_rate=mutation,user=user, update_interval=50)
 #algorithm = VariableConstraintMapElites(problem_space, number_generations=number_generation, population_size=population_size, max_memory=max_memory, cross_over_rate=cross_over, mutation_rate=mutation,user=user, update_interval=50)
+algorithm = YouAlgorithm(problem_space, number_generations=number_generation, population_size=population_size, max_memory=max_memory, cross_over_rate=cross_over, mutation_rate=mutation,user=user, update_interval=50)
 
 
 algorithm.run()
