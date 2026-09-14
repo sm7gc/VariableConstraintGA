@@ -1,9 +1,3 @@
-import sys
-import os 
-
-sys.path.append(os.path.join(os.path.dirname(__file__), os.pardir)) 
-import random 
-import math 
 import numpy.random as npr
 
 from GeneticAlgorithmInterface import VariableConstraintGA
@@ -23,44 +17,39 @@ def roulette_selection(population):
     return population[npr.choice(len(population), p=selection_probs)]
 
 def decide(rate):
-    return random.random() < rate
+    return npr.random() < rate
 
 class DynamicShuffling(VariableConstraintGA):
-    def __init__(self, problem_space: ProblemSpace, number_generations, population_size, max_memory, cross_over_rate, mutation_rate, user, update_interval, infeasible_rate = 0.5, elitism = 0.3):
-        self.infeasible_rate = infeasible_rate 
-        self.elitism = elitism
-        super().__init__(problem_space, number_generations, population_size, max_memory, cross_over_rate, mutation_rate, user, update_interval)
-    
     def _sort_pop(self, pop):
         pop.sort(key=lambda i: i[0], reverse=True)
     
-    def select(self):
-        # select from feasible 
+    def select_random(self):
+
+        # randomly select individual
         if decide((self.num_feasible * 2) / (self.num_feasible + len(self.infeasible_pop))):
-
-            # randomly select a bin with children 
-            bi = random.choice(range(len(self.bins)))
-            while len(self.bins[bi]) == 0:
-                bi = random.choice(range(len(self.bins))) 
-            
-            # select from bin using roulette selection 
-            return roulette_selection(self.bins[bi])
-        # select from infeasible 
+            return self.select_feasible()
         else:
-            return roulette_selection(self.infeasible_pop)
+            return self.select_infeasible()
 
+    def select_feasible(self):
+        # randomly select a bin with children 
+        bi = npr.choice(range(len(self.bins)))
+        while len(self.bins[bi]) == 0:
+            bi = npr.choice(range(len(self.bins)))  
+        # select from bin using roulette selection 
+        return roulette_selection(self.bins[bi])
+
+    def select_infeasible(self):
+        return roulette_selection(self.infeasible_pop)
+    
+    def select_near(self):
+        return roulette_selection([x for x in self.infeasible_pop if x[0] >= self.near_sat])
 
     def place_in_bin(self, ind, infeasible_pop):
-        # determine if feasible 
-        fes = True 
-        constraints_sat = 0 
-        for con in self.problem_space.get_constant_constraints() + self.variable_constraints:
-            if not con.apply(ind):
-                fes = False 
-            else:
-                constraints_sat += 1 
-                 
-        
+
+        satisfaction = self.satisfaction(ind)
+        fes = (satisfaction == 1)
+
         # if feasible put in bin 
         if fes:
             b = self.problem_space.place_in_bin(ind)
@@ -75,38 +64,48 @@ class DynamicShuffling(VariableConstraintGA):
                 self.bins[b].pop(-1)
                 self.bins[b].append((self.problem_space.fitness(ind), ind))
                 self._sort_pop(self.bins[b])
-                self.num_feasible += 1 
+                self.num_feasible += 1
         # otherwise put in the infeasible population 
         else:
-            # if there is still room in the infeasible fitness add it 
+            # if there is still room in the infeasible pop add it 
             if len(infeasible_pop) < self.infeasible_pop_size:
-                
-                infeasible_pop.append((constraints_sat, ind))
-    
+                infeasible_pop.append((satisfaction, ind))
+
     def re_shuffle(self):
         # First get all children from feasible and infeasible pop 
         all_children = self.infeasible_pop[:]
         all_children += [el for li in self.bins for el in li]
 
         # then re-set all populations 
-        new_infeasible = [] 
+        new_infeasible = []
         self.set_up()
 
         #then re-add all children based on new cons 
         for c in all_children:
             self.place_in_bin(c[1], new_infeasible)
-        
-        self.infeasible_pop = new_infeasible 
 
+        self.infeasible_pop = new_infeasible
+        self.num_near = len([x for x in self.infeasible_pop if x[0] >= self.near_sat])
 
-    def set_up(self):
-        self.infeasible_pop_size = self.max_memory * self.infeasible_rate 
+    def satisfaction(self, ind):
+        applicable_constraints = self.problem_space.get_constant_constraints() + self.variable_constraints
+        constraints_sat = sum([con.apply(ind) for con in applicable_constraints])
+        return constraints_sat/len(applicable_constraints)
+
+    def set_up(self): 
+        self.infeasible_rate = 0.5
+        self.elitism = 0.3
+        self.near_sat = 0.6
+
+        self.infeasible_pop_size = self.max_memory * self.infeasible_rate
         self.elitism_num = round(self.infeasible_pop_size * self.elitism)
-        self.feasible_pop_size = self.max_memory - self.infeasible_pop_size 
-        self.inds_per_bin = math.floor(self.feasible_pop_size / self.problem_space.get_num_bins()) 
+        self.feasible_pop_size = self.max_memory - self.infeasible_pop_size
+        self.inds_per_bin = self.feasible_pop_size // self.problem_space.get_num_bins()
         self.bins = []
-        self.num_feasible = 0 
-        self.infeasible_pop = [] 
+        self.num_feasible = 0
+        self.infeasible_pop = []
+        self.num_near = 0
+
         for i in range(self.problem_space.get_num_bins()):
             self.bins.append([])
         
@@ -114,25 +113,36 @@ class DynamicShuffling(VariableConstraintGA):
         for i in range(self.population_size):
             indv = self.problem_space.generate_random_individual()
             self.place_in_bin(indv, self.infeasible_pop)
-        
+
 
     def run_one_generation(self, made_change): 
 
         # if the constraints have been change, reshuffle population 
         if made_change:
             self.re_shuffle()
+
         self._sort_pop(self.infeasible_pop)
         new_infeasible = self.infeasible_pop[:self.elitism_num]
-        for i in range(math.floor(self.population_size / 2)):
-            # select 
-            child1 = self.select()[1]
-            child2 = self.select()[1]
+
+        for i in range(self.population_size // 2):
+            
+            # dynamic selection based on constraint satisfaction
+            sat, child1 = self.select_random()
+            # if feasible, select feasible
+            if sat == 1:
+                child2 = self.select_feasible()[1]
+            # if near feasible, select feasible or near feasible
+            elif sat >= self.near_sat:
+                child2 = self.select_near()[1] if decide(self.num_near / len(self.infeasible_pop)) else self.select_feasible()[1]
+            # if infeasible, select infeasible or feasible
+            else:
+                child2 = self.select_infeasible()[1] if decide(len(self.infeasible_pop) / self.max_memory) else self.select_feasible()[1]
 
             # cross over 
             if decide(self.cross_over_rate):
                 child1, child2 = self.problem_space.cross_over(child1, child2)
             
-            # mutate 
+            # mutate
             child1 = self.problem_space.mutate(child1, self.mutation_rate)
             child2 = self.problem_space.mutate(child2, self.mutation_rate)
 
@@ -140,8 +150,7 @@ class DynamicShuffling(VariableConstraintGA):
             self.place_in_bin(child1, new_infeasible)
             self.place_in_bin(child2, new_infeasible)
         
-        self.infeasible_pop = new_infeasible 
+        self.infeasible_pop = new_infeasible
+        self.num_near = len([x for x in self.infeasible_pop if x[0] >= self.near_sat])
 
         return self.bins
-
-    
