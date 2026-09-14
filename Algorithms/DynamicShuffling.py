@@ -1,6 +1,6 @@
 from GeneticAlgorithmInterface import VariableConstraintGA 
 
-class YouAlgorithm(VariableConstraintGA):
+class DynamicShuffling(VariableConstraintGA):
     def set_up(self): 
         """
         Insert all your set up code here 
